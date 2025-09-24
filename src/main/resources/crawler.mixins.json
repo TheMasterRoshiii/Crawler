@@ -1,13 +1,11 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "me.master.owleaf.mixin",
+  "package": "me.master.owleaf.crawler.mixins",
   "compatibilityLevel": "JAVA_8",
   "refmap": "crawler.refmap.json",
-  "mixins": [
-  ],
-  "client": [
-  ],
+  "mixins": ["PlayerMovementMixin"],
+  "client": ["KeyboardInputMixin"],
   "injectors": {
     "defaultRequire": 1
   },
