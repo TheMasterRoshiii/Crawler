@@ -22,7 +22,6 @@ import software.bernie.geckolib.core.animation.AnimationState;
 import software.bernie.geckolib.core.animation.RawAnimation;
 import software.bernie.geckolib.core.object.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
-
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,16 +30,14 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
     private static final EntityDataAccessor<Byte> TRAP_STATE = SynchedEntityData.defineId(CrawlerTrapEntity.class, EntityDataSerializers.BYTE);
     private static final EntityDataAccessor<Boolean> IS_VISIBLE = SynchedEntityData.defineId(CrawlerTrapEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Float> ESCAPE_PROGRESS = SynchedEntityData.defineId(CrawlerTrapEntity.class, EntityDataSerializers.FLOAT);
-
+    private static final EntityDataAccessor<Boolean> PROXY_SPAWNED = SynchedEntityData.defineId(CrawlerTrapEntity.class, EntityDataSerializers.BOOLEAN);
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
-
     private ServerPlayer trappedPlayer = null;
     private double originalMaxHealth = 0;
     private final AtomicInteger escapeInputs = new AtomicInteger(0);
     public int trapStartTick = 0;
     private int ticksSinceLastDetection = 0;
     private int ticksSinceLastDamage = 0;
-
     private static final int DETECTION_INTERVAL = 5;
     private static final int DAMAGE_INTERVAL = 20;
     private static final int ESCAPE_COOLDOWN = 300;
@@ -50,10 +47,8 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
 
     public enum TrapState {
         IDLE(0), ACTIVATING(1), TRAPPING(2), ESCAPING(3), COOLDOWN(4);
-
         private final byte id;
         TrapState(int id) { this.id = (byte) id; }
-
         public static TrapState fromId(byte id) {
             for (TrapState state : values()) {
                 if (state.id == id) return state;
@@ -73,12 +68,12 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
         this.entityData.define(TRAP_STATE, TrapState.IDLE.id);
         this.entityData.define(IS_VISIBLE, false);
         this.entityData.define(ESCAPE_PROGRESS, 0.0f);
+        this.entityData.define(PROXY_SPAWNED, false);
     }
 
     @Override
     public void tick() {
         super.tick();
-
         if (!level().isClientSide) {
             serverTick();
         }
@@ -86,7 +81,6 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
 
     private void serverTick() {
         TrapState currentState = getCurrentState();
-
         switch (currentState) {
             case IDLE -> {
                 if (++ticksSinceLastDetection >= DETECTION_INTERVAL) {
@@ -104,14 +98,15 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
             }
             case TRAPPING -> {
                 if (trappedPlayer != null) {
+                    if (!entityData.get(PROXY_SPAWNED)) {
+                        entityData.set(PROXY_SPAWNED, true);
+                    }
                     if (++ticksSinceLastDamage >= DAMAGE_INTERVAL) {
                         ticksSinceLastDamage = 0;
                         dealTrapDamage();
                     }
-
                     forcePlayerPosition();
                     updateEscapeProgress();
-
                     if (!trappedPlayer.isAlive()) {
                         disappear();
                     }
@@ -133,7 +128,6 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
     private void detectNearbyPlayers() {
         AABB detectionBox = getBoundingBox().inflate(DETECTION_RANGE);
         List<ServerPlayer> nearbyPlayers = level().getEntitiesOfClass(ServerPlayer.class, detectionBox);
-
         for (ServerPlayer player : nearbyPlayers) {
             if (isValidTarget(player)) {
                 activateTrap(player);
@@ -143,25 +137,20 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
     }
 
     private boolean isValidTarget(ServerPlayer player) {
-        return !player.isCreative() &&
-                !player.isSpectator() &&
-                player.isAlive() &&
-                distanceToSqr(player) <= DETECTION_RANGE * DETECTION_RANGE;
+        return !player.isCreative() && !player.isSpectator() && player.isAlive() && distanceToSqr(player) <= DETECTION_RANGE * DETECTION_RANGE;
     }
 
     private void activateTrap(ServerPlayer player) {
         trappedPlayer = player;
         trapStartTick = tickCount;
         escapeInputs.set(0);
-
         storeOriginalHealth(player);
         setTrapState(TrapState.ACTIVATING);
         setVisible(true);
         setEscapeProgress(0.0f);
-
+        entityData.set(PROXY_SPAWNED, false);
         snapPlayerToTrap(player);
-
-        PacketHandler.sendToPlayer(new TrapStatePacket(true, 0.0f), player);
+        PacketHandler.sendToPlayer(new TrapStatePacket(true, 0.0f, this.getX(), this.getY(), this.getZ()), player);
     }
 
     private void storeOriginalHealth(ServerPlayer player) {
@@ -173,13 +162,11 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
 
     private void dealTrapDamage() {
         if (trappedPlayer == null) return;
-
         AttributeInstance maxHealthAttr = trappedPlayer.getAttribute(Attributes.MAX_HEALTH);
         if (maxHealthAttr != null) {
             double currentMaxHealth = maxHealthAttr.getValue();
             if (currentMaxHealth > 4.0) {
                 maxHealthAttr.setBaseValue(Math.max(4.0, currentMaxHealth - 2.0));
-
                 if (trappedPlayer.getHealth() > maxHealthAttr.getValue()) {
                     trappedPlayer.setHealth((float) maxHealthAttr.getValue());
                 }
@@ -191,14 +178,12 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
 
     private void forcePlayerPosition() {
         if (trappedPlayer == null) return;
-
         trappedPlayer.teleportTo(getX(), getY() + 0.5, getZ());
         trappedPlayer.setDeltaMovement(Vec3.ZERO);
         trappedPlayer.hurtMarked = true;
         trappedPlayer.getAbilities().flying = false;
         trappedPlayer.getAbilities().mayfly = false;
         trappedPlayer.onUpdateAbilities();
-
         trappedPlayer.invulnerableTime = 0;
     }
 
@@ -206,13 +191,11 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
         player.teleportTo(getX(), getY() + 0.5, getZ());
         player.setDeltaMovement(Vec3.ZERO);
         player.hurtMarked = true;
-
         player.hurt(player.damageSources().generic(), DAMAGE_AMOUNT);
     }
 
     private void updateEscapeProgress() {
         if (trappedPlayer == null) return;
-
         int currentInputs = escapeInputs.get();
         float progress = Math.min(100.0f, (currentInputs / (float) REQUIRED_ESCAPE_INPUTS) * 100.0f);
         setEscapeProgress(progress);
@@ -222,26 +205,21 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
         if (trappedPlayer == null || !trappedPlayer.getUUID().equals(playerId) || getCurrentState() != TrapState.TRAPPING) {
             return false;
         }
-
         int currentInputs = escapeInputs.incrementAndGet();
         float progress = Math.min(100.0f, (currentInputs / (float) REQUIRED_ESCAPE_INPUTS) * 100.0f);
         setEscapeProgress(progress);
-
-        PacketHandler.sendToPlayer(new TrapStatePacket(true, progress), trappedPlayer);
-
+        PacketHandler.sendToPlayer(new TrapStatePacket(true, progress, this.getX(), this.getY(), this.getZ()), trappedPlayer);
         if (currentInputs >= REQUIRED_ESCAPE_INPUTS) {
             escapePlayer();
         }
-
         return true;
     }
 
     private void escapePlayer() {
         if (trappedPlayer != null) {
             trappedPlayer.teleportTo(getX(), getY() + 1.0, getZ());
-
-            PacketHandler.sendToPlayer(new TrapStatePacket(false, 0.0f), trappedPlayer);
-
+            trappedPlayer.setInvisible(false);
+            PacketHandler.sendToPlayer(new TrapStatePacket(false, 0.0f, 0, 0, 0), trappedPlayer);
             setTrapState(TrapState.ESCAPING);
             setVisible(true);
             trapStartTick = tickCount;
@@ -250,63 +228,41 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
 
     private void disappear() {
         if (trappedPlayer != null) {
-            PacketHandler.sendToPlayer(new TrapStatePacket(false, 0.0f), trappedPlayer);
+            trappedPlayer.setInvisible(false);
+            PacketHandler.sendToPlayer(new TrapStatePacket(false, 0.0f, 0, 0, 0), trappedPlayer);
         }
-
         setVisible(false);
         this.discard();
     }
 
     private void reset() {
         if (trappedPlayer != null) {
-            PacketHandler.sendToPlayer(new TrapStatePacket(false, 0.0f), trappedPlayer);
+            trappedPlayer.setInvisible(false);
+            PacketHandler.sendToPlayer(new TrapStatePacket(false, 0.0f, 0, 0, 0), trappedPlayer);
         }
-
         trappedPlayer = null;
         originalMaxHealth = 0;
         escapeInputs.set(0);
         trapStartTick = 0;
         ticksSinceLastDetection = 0;
         ticksSinceLastDamage = 0;
-
         setTrapState(TrapState.IDLE);
         setVisible(false);
         setEscapeProgress(0.0f);
+        entityData.set(PROXY_SPAWNED, false);
     }
 
     public boolean isTrappingPlayer(UUID playerId) {
-        return trappedPlayer != null &&
-                trappedPlayer.getUUID().equals(playerId) &&
-                getCurrentState() == TrapState.TRAPPING;
+        return trappedPlayer != null && trappedPlayer.getUUID().equals(playerId) && getCurrentState() == TrapState.TRAPPING;
     }
 
-    private void setTrapState(TrapState state) {
-        entityData.set(TRAP_STATE, state.id);
-    }
-
-    private void setVisible(boolean visible) {
-        entityData.set(IS_VISIBLE, visible);
-    }
-
-    private void setEscapeProgress(float progress) {
-        entityData.set(ESCAPE_PROGRESS, progress);
-    }
-
-    public TrapState getCurrentState() {
-        return TrapState.fromId(entityData.get(TRAP_STATE));
-    }
-
-    public boolean shouldRender() {
-        return entityData.get(IS_VISIBLE);
-    }
-
-    public float getEscapeProgress() {
-        return entityData.get(ESCAPE_PROGRESS);
-    }
-
-    public boolean hasTrappedPlayer() {
-        return trappedPlayer != null;
-    }
+    private void setTrapState(TrapState state) { entityData.set(TRAP_STATE, state.id); }
+    private void setVisible(boolean visible) { entityData.set(IS_VISIBLE, visible); }
+    private void setEscapeProgress(float progress) { entityData.set(ESCAPE_PROGRESS, progress); }
+    public TrapState getCurrentState() { return TrapState.fromId(entityData.get(TRAP_STATE)); }
+    public boolean shouldRender() { return entityData.get(IS_VISIBLE); }
+    public float getEscapeProgress() { return entityData.get(ESCAPE_PROGRESS); }
+    public boolean hasTrappedPlayer() { return trappedPlayer != null; }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
@@ -317,19 +273,15 @@ public class CrawlerTrapEntity extends Entity implements GeoEntity {
         if (!shouldRender()) {
             return PlayState.STOP;
         }
-
         return switch (getCurrentState()) {
-            case ACTIVATING -> state.setAndContinue(RawAnimation.begin().thenPlay("trap"));
-            case TRAPPING -> state.setAndContinue(RawAnimation.begin().thenLoop("trap"));
+            case ACTIVATING, TRAPPING -> state.setAndContinue(RawAnimation.begin().thenLoop("trap"));
             case ESCAPING -> state.setAndContinue(RawAnimation.begin().thenPlay("scape"));
             default -> PlayState.STOP;
         };
     }
 
     @Override
-    public AnimatableInstanceCache getAnimatableInstanceCache() {
-        return cache;
-    }
+    public AnimatableInstanceCache getAnimatableInstanceCache() { return cache; }
 
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {

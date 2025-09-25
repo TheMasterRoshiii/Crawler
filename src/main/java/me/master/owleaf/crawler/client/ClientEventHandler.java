@@ -1,3 +1,4 @@
+// src/main/java/me/master/owleaf/crawler/client/ClientEventHandler.java
 package me.master.owleaf.crawler.client;
 
 import me.master.owleaf.crawler.client.gui.EscapeHudOverlay;
@@ -22,7 +23,6 @@ public class ClientEventHandler {
     public static void registerOverlays(RegisterGuiOverlaysEvent event) {
         EscapeHudOverlay overlay = new EscapeHudOverlay();
         TrapClientHandler.setHudOverlay(overlay);
-
         event.registerAbove(VanillaGuiOverlay.HOTBAR.id(), "crawler_escape_hud", overlay);
     }
 }

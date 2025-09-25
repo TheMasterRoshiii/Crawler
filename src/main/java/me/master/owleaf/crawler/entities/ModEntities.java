@@ -1,5 +1,6 @@
 package me.master.owleaf.crawler.entities;
 
+
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.registries.DeferredRegister;
@@ -17,4 +18,5 @@ public class ModEntities {
                     .updateInterval(20)
                     .setShouldReceiveVelocityUpdates(false)
                     .build("crawler_trap"));
+
 }

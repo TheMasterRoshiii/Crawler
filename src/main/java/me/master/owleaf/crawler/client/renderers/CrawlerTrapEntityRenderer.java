@@ -3,6 +3,7 @@ package me.master.owleaf.crawler.client.renderers;
 import com.mojang.blaze3d.vertex.PoseStack;
 import me.master.owleaf.crawler.entities.CrawlerTrapEntity;
 import me.master.owleaf.crawler.client.models.CrawlerTrapEntityModel;
+
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
@@ -11,6 +12,7 @@ public class CrawlerTrapEntityRenderer extends GeoEntityRenderer<CrawlerTrapEnti
 
     public CrawlerTrapEntityRenderer(EntityRendererProvider.Context context) {
         super(context, new CrawlerTrapEntityModel());
+
     }
 
     @Override
